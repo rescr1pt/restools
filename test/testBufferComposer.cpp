@@ -77,7 +77,26 @@ void testBufferComposerNegative()
     assert(composer.compose(composedData,
         composedDataSize) == BufferComposerComposeStatus::Success);
 
-    assert(composer.save(generatedDataForChunks.data() + 31, 1) == BufferComposerSaveStatus::NotCleanedAfterComposed);
+    assert(composer.save(generatedDataForChunks.data() + 31, 1) == BufferComposerSaveStatus::NotClearedAfterCompose);
+}
+
+void testBufferComposerBufferIsOverlapping()
+{
+    using namespace restools;
+    buffer_composer<16, 2> composer(16, 16);
+
+    auto generatedDataOverflow = generateRandomData(12);
+    assert(composer.save(generatedDataOverflow.data(), generatedDataOverflow.size()) == restools::BufferComposerSaveStatus::Success);
+
+    unsigned char* composedData = nullptr;
+    size_t composedDataSize = 0;
+
+    assert(composer.compose(composedData, composedDataSize) == restools::BufferComposerComposeStatus::Success);
+    composer.clear();
+
+    for (size_t i = 0; i < composedDataSize; ++i) {
+        assert(composer.save(composedData + i, composedDataSize - i) == restools::BufferComposerSaveStatus::BufferIsOverlapping);
+    }
 }
 
 template <size_t STACK_BUFFER_MAX>
@@ -146,8 +165,10 @@ void testBufferComposerWithDataSizeInterval()
     }
 }
 
+
 void testBufferComposer()
 {
     testBufferComposerNegative();
+    testBufferComposerOverlapping();
     testBufferComposerWithDataSizeInterval();
 }

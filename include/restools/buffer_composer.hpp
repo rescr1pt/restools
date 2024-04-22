@@ -11,7 +11,8 @@ namespace restools
         NullBuffer,
         ZeroBufferSize,
         MaxSavedBufferCountLimited,
-        NotCleanedAfterComposed,
+        NotClearedAfterCompose,
+        BufferIsOverlapping,
     };
 
     enum class BufferComposerComposeStatus : short
@@ -30,6 +31,7 @@ namespace restools
     {
         static_assert(STACK_BUFFER_MAX > 0 && STACK_BUFFER_MAX % 8 == 0, "STACK_BUFFER_MAX is not divisible to 8");
         static_assert(LINEAR_BUFFER_MULTIPLIER > 1, "LINEAR_BUFFER_MULTIPLIER < 2");
+        static constexpr size_t COMPOSED_BUFFER_IS_NOT_RESET_FLAG = 0xFFFFFFFFFFFFFFFF;
 
     public:
         buffer_composer(size_t linearBufferMaxSize, size_t saveBufferMaxCount)
@@ -51,8 +53,8 @@ namespace restools
 
         BufferComposerSaveStatus save(const unsigned char* buffer, size_t bufferSize) noexcept
         {
-            if (composedBufferFromChunks_) {
-                return BufferComposerSaveStatus::NotCleanedAfterComposed;
+            if (savedCount_ == COMPOSED_BUFFER_IS_NOT_RESET_FLAG) {
+                return BufferComposerSaveStatus::NotClearedAfterCompose;
             }
 
             if (!buffer) {
@@ -70,6 +72,10 @@ namespace restools
             }
 
             if (nextSavedCount <= STACK_BUFFER_MAX) {
+                if (buffer >= stackBuffer_ && buffer <= (stackBuffer_ + STACK_BUFFER_MAX)) {
+                    return BufferComposerSaveStatus::BufferIsOverlapping;
+                }
+
                 std::memcpy(stackBuffer_ + savedCount_, buffer, bufferSize);
                 savedCount_ = nextSavedCount;
                 inBufferSavedCount_ = nextSavedCount;
@@ -89,6 +95,11 @@ namespace restools
                     delete[]linearBuffer_;
                     linearBuffer_ = nextLinearBuffer;
                     linearBufferAllocatedSize_ = allocatedSize;
+                }
+                else {
+                    if (buffer >= linearBuffer_ && buffer <= (linearBuffer_ + linearBufferAllocatedSize_)) {
+                        return BufferComposerSaveStatus::BufferIsOverlapping;
+                    }
                 }
 
                 if (savedCount_ > 0 && savedCount_ <= STACK_BUFFER_MAX) {
@@ -117,21 +128,21 @@ namespace restools
                 return BufferComposerComposeStatus::NoDataSaved;
             }
 
-            if (savedCount_ <= STACK_BUFFER_MAX) {
+            composedDataSize = savedCount_;
+            savedCount_ = COMPOSED_BUFFER_IS_NOT_RESET_FLAG;
+
+            if (composedDataSize <= STACK_BUFFER_MAX) {
                 composedData = stackBuffer_;
-                composedDataSize = savedCount_;
                 return BufferComposerComposeStatus::Success;
             }
 
-            if (savedCount_ <= linearBufferMaxSize_) {
+            if (composedDataSize <= linearBufferMaxSize_) {
                 composedData = linearBuffer_;
-                composedDataSize = savedCount_;
                 return BufferComposerComposeStatus::Success;
             }
 
             if (composedBufferFromChunks_) {
                 composedData = composedBufferFromChunks_;
-                composedDataSize = savedCount_;
                 return BufferComposerComposeStatus::Success;
             }
 
@@ -139,7 +150,7 @@ namespace restools
                 return BufferComposerComposeStatus::NoChunkSaved;
             }
 
-            composedBufferFromChunks_ = new unsigned char[savedCount_];
+            composedBufferFromChunks_ = new unsigned char[composedDataSize];
             size_t writtenToComposedBuffer = 0;
 
             if (inBufferSavedCount_ > 0) {
@@ -157,7 +168,7 @@ namespace restools
             }
 
             for (Chunk& record : chunks_) {
-                if (!record.first || writtenToComposedBuffer + record.second > savedCount_) {
+                if (!record.first || writtenToComposedBuffer + record.second > composedDataSize) {
                     return BufferComposerComposeStatus::LogicErrorWhenComposingFromChunks;
                 }
                 std::memcpy(composedBufferFromChunks_ + writtenToComposedBuffer, record.first, record.second);
@@ -167,14 +178,13 @@ namespace restools
                 record.first = nullptr;
             }
 
-            if (writtenToComposedBuffer != savedCount_) {
+            if (writtenToComposedBuffer != composedDataSize) {
                 return BufferComposerComposeStatus::ComposedDataFromChunksDontMatchToSavedCount;
             }
 
             chunks_.clear();
 
             composedData = composedBufferFromChunks_;
-            composedDataSize = savedCount_;
 
             return BufferComposerComposeStatus::Success;
         }

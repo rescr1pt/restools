@@ -61,7 +61,7 @@ void testBytesToIntegerForType()
     testBytesToIntegerCheckValue(std::numeric_limits<T>::max());
 }
 
-void testBytesToInteger()
+void testBytesToType()
 {
     testBytesToIntegerForType<unsigned char>();
     testBytesToIntegerForType<char>();
