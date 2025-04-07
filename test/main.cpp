@@ -1,10 +1,11 @@
 
 extern void testBufferComposer();
-extern void testBytesToInteger();
+extern void testBytesToType();
+extern void testBytesWriter();
 
 int main()
 {
-    testBytesToInteger();
+    testBytesToType();
+    // testBytesWriter();
     testBufferComposer();
 }
-

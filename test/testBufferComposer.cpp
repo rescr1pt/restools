@@ -169,6 +169,6 @@ void testBufferComposerWithDataSizeInterval()
 void testBufferComposer()
 {
     testBufferComposerNegative();
-    testBufferComposerOverlapping();
+    testBufferComposerBufferIsOverlapping();
     testBufferComposerWithDataSizeInterval();
 }

@@ -15,8 +15,8 @@ void testBytesToTypeCheckValueForEndian(T testTypeValue, bool reverseEndian)
     memset(&outType, 0, sizeof(T));
     unsigned char dstBuffer[sizeof(T)] = { 0 };
 
-    typeToBytes(testTypeValue, dstBuffer, reverseEndian);
-    bytesToType(dstBuffer, outType, reverseEndian);
+    assert(typeToBytesSafe(testTypeValue, dstBuffer, sizeof(dstBuffer), reverseEndian) == TypeToByteStatus::Success);
+    assert(bytesToTypeSafe(dstBuffer, sizeof(dstBuffer), outType, reverseEndian) == BytesToTypeStatus::Success);
 
     assert(memcmp(&testTypeValue, &outType, sizeof(T)) == 0);
 }
@@ -29,12 +29,10 @@ void testBytesToIntegerCheckValueForEndian(T testIntegerValue, bool reverseEndia
     T outInteger = 0;
     unsigned char dstBuffer[sizeof(T)] = { 0 };
 
-    typeToBytes(testIntegerValue, dstBuffer, reverseEndian);
-    bytesToType(dstBuffer, outInteger, reverseEndian);
-    T outInteger2 = bytesToType<T>(dstBuffer, reverseEndian);
+    assert(typeToBytesSafe(testIntegerValue, dstBuffer, sizeof(dstBuffer), reverseEndian) == TypeToByteStatus::Success);
+    assert(bytesToTypeSafe(dstBuffer, sizeof(dstBuffer), outInteger, reverseEndian) == BytesToTypeStatus::Success);
 
     assert(testIntegerValue == outInteger);
-    assert(testIntegerValue == outInteger2);
 }
 
 template <typename T>
@@ -61,6 +59,20 @@ void testBytesToIntegerForType()
     testBytesToIntegerCheckValue(std::numeric_limits<T>::max());
 }
 
+void testBytesToTypeIsOverlapping()
+{
+    static constexpr size_t typeSizeOf = sizeof(unsigned long long);
+    unsigned long long typeValue = 0x0123456789ABCDEF;
+    unsigned char* testTypeAsBytes = reinterpret_cast<unsigned char*>(&typeValue);
+    
+    using namespace restools;
+
+    for (size_t i = 0 ; i < typeSizeOf; ++i) {
+        assert(typeToBytesSafe(typeValue, testTypeAsBytes + i, typeSizeOf, true) == TypeToByteStatus::BufferIsOverlapping);
+        assert(bytesToTypeSafe(testTypeAsBytes + i, typeSizeOf, typeValue, true) == BytesToTypeStatus::BufferIsOverlapping);
+    }
+}
+
 void testBytesToType()
 {
     testBytesToIntegerForType<unsigned char>();
@@ -84,4 +96,7 @@ void testBytesToType()
 
     TestStruct testStruct;
     testBytesToTypeCheckValueForEndian<TestStruct>(testStruct, false);
+    testBytesToTypeCheckValueForEndian<TestStruct>(testStruct, true);
+
+    testBytesToTypeIsOverlapping();
 }

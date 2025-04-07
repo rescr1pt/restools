@@ -1,42 +1,92 @@
 #pragma once 
 
-#include <cstring> // memcpy
 #include <algorithm> // reverse_copy
+#include <bit> // endian
+#include <cstring> // memcpy
 
 namespace restools
 {
-    template <typename T>
-    inline T const& bytesToType(const unsigned char* srcBytes, T& dstValue, bool reverseEndian)
+    enum class BytesToTypeStatus : short
     {
-        if (reverseEndian) {
-            std::reverse_copy(srcBytes, srcBytes + sizeof(T), reinterpret_cast<unsigned char*>(&dstValue));
+        Success,
+        BufferIsOverflow,
+        BufferIsOverlapping
+    };
+
+    enum class TypeToByteStatus : short
+    {
+        Success,
+        BufferIsOverflow,
+        BufferIsOverlapping
+    };
+
+
+    template <typename T>
+    inline void bytesToTypeFast(const unsigned char* srcBytes, T& dstValue, bool isBigEndian)
+    {
+        bool needsReverse = ((std::endian::native == std::endian::little && isBigEndian) ||
+            (std::endian::native == std::endian::big && !isBigEndian));
+
+        if (needsReverse) {
+            std::reverse_copy(srcBytes,
+                srcBytes + sizeof(T),
+                reinterpret_cast<unsigned char*>(&dstValue));
         }
         else {
-            std::memcpy(reinterpret_cast<void*>(&dstValue), reinterpret_cast<const void*>(srcBytes), sizeof(T));
+            std::memcpy(reinterpret_cast<unsigned char*>(&dstValue),
+                reinterpret_cast<const void*>(srcBytes),
+                sizeof(T));
+        }
+    }
+
+    template <typename T>
+    BytesToTypeStatus bytesToTypeSafe(const unsigned char* srcBytes, size_t srcBytesSize, T& dstValue, bool reverseEndian)
+    {
+        constexpr size_t dstValueCapacity = sizeof(T);
+
+        if (srcBytesSize < dstValueCapacity) {
+            return BytesToTypeStatus::BufferIsOverflow;
         }
 
-        return dstValue;
+        unsigned char* dstAsBytes = reinterpret_cast<unsigned char*>(&dstValue);
 
+        if ((srcBytes < dstAsBytes + dstValueCapacity) && (dstAsBytes < srcBytes + srcBytesSize)) {
+            return BytesToTypeStatus::BufferIsOverlapping;
+        }
+
+        bytesToTypeFast(srcBytes, dstValue, reverseEndian);
+
+        return BytesToTypeStatus::Success;
     }
 
     template <typename T>
-    inline T bytesToType(const unsigned char* srcBytes, bool reverseEndian)
+    TypeToByteStatus typeToBytesSafe(const T& srcValue, unsigned char* dstBytes, size_t dstBytesCapacity, bool isBigEndian)
     {
-        T dstValue = 0;
-        return bytesToType<T>(srcBytes, dstValue, reverseEndian);
-    }
+        constexpr size_t srcValueSize = sizeof(T);
 
-    template <typename T>
-    inline unsigned char* typeToBytes(const T srcValue, unsigned char* dstBytes, bool reverseEndian)
-    {
-        if (reverseEndian) {
-            const unsigned char* srcAsBytes = reinterpret_cast<const unsigned char*>(&srcValue);
-            std::reverse_copy(srcAsBytes, srcAsBytes + sizeof(T), dstBytes);
+        if (dstBytesCapacity < srcValueSize) {
+            return TypeToByteStatus::BufferIsOverflow;
+        }
+
+        const unsigned char* srcAsBytes = reinterpret_cast<const unsigned char*>(&srcValue);
+
+        if ((srcAsBytes < dstBytes + dstBytesCapacity) && (dstBytes < srcAsBytes + srcValueSize)) {
+            return TypeToByteStatus::BufferIsOverlapping;
+        }
+
+        bool needsReverse = (
+            (std::endian::native == std::endian::little && isBigEndian) ||
+            (std::endian::native == std::endian::big && !isBigEndian)
+            );
+
+        if (needsReverse) {
+            std::reverse_copy(srcAsBytes, srcAsBytes + srcValueSize, dstBytes);
         }
         else {
-            memcpy(reinterpret_cast<void*>(dstBytes), reinterpret_cast<const void*>(&srcValue), sizeof(T));
+            std::memcpy(dstBytes, srcAsBytes, srcValueSize);
         }
 
-        return dstBytes;
+        return TypeToByteStatus::Success;
     }
+
 }
